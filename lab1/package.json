@@ -1,0 +1,16 @@
+{
+  "name": "lab1",
+  "version": "1.0.0",
+  "description": "Lab 1 - Latency hiding: client-side vs server-side validation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "measure": "node measure.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

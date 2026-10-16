@@ -1,0 +1,8 @@
+# Thư viện cài bằng npm (tạo lại bằng: npm install)
+node_modules/
+
+# File sinh ra khi chạy chương trình
+lab5/logs/
+__pycache__/
+*.pyc
+*.log
