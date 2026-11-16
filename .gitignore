@@ -6,3 +6,6 @@ lab5/logs/
 __pycache__/
 *.pyc
 *.log
+
+# Thư mục DataNode giả lập của lab12 (tạo lại mỗi lần chạy)
+lab12/datanodes/

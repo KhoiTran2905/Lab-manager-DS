@@ -1,7 +1,13 @@
 # Bài lab Hệ thống phân tán (bản thu gọn)
 
 Mỗi bài lab làm theo phần cuối slide trong thư mục tương ứng, chỉ giữ phần cốt lõi.
-Lab 2–9 viết bằng Python 3. Lab 2–8 không cần thư viện ngoài; lab 9 cần `pip install cryptography` (để có AES).
+Lab 1 dùng Node.js, lab 2–12 dùng Python 3.
+
+**Thư viện cần cài:**
+- Lab 2–8, 12: không cần thư viện ngoài.
+- Lab 9, 10: `pip install cryptography` (AES).
+- Lab 11: `pip install flask`.
+
 Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODING=utf-8` trước.
 
 | Lab | Slide | Nội dung | Chạy |
@@ -14,20 +20,30 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
 | lab6 | Lect06 – Quorum (*) | N=5 bản sao, kiểm tra luật NR+NW>N và NW>N/2, so sánh cấu hình hợp lệ và không hợp lệ (đọc ra dữ liệu cũ) | `python lab6/quorum.py` |
 | lab7 | Lect07 – Session Proxy | Proxy giữ V_read / V_write, bảo đảm Monotonic Reads và Read-Your-Writes trên 3 server S1–S3 bị lệch nhau | `python lab7/session_proxy.py` |
 | lab8 | Lect08 – Gossip & Quorum | 5 replica TCP, quorum Gifford (NR, NW), gossip Push-Pull mỗi 2s, xóa bằng Tombstone | `python lab8/gossip_quorum.py` (~10 giây) |
-| lab9 | Lect09 – Secure RPC & KDC | KDC + Alice + Bob qua TCP: Needham-Schroeder, AES-CBC, HMAC-SHA256, chống replay bằng nonce | `pip install cryptography` rồi `python lab9/secure_rpc.py` |
+| lab9 | Lect09 – Secure RPC & KDC | KDC + Alice + Bob qua TCP: Needham-Schroeder, AES-CBC, HMAC-SHA256, chống replay bằng nonce | `python lab9/secure_rpc.py` |
+| lab10 | Lect10 – Secure Group Multicast & ABAC | Key Server giữ cây khóa LKH (N=8), đổi khóa khi Join / Leave, multicast mã hóa AES-256-GCM, ABAC kiểm tra Role + Time | `python lab10/secure_group.py` |
+| lab11 | Lect11 – RESTful Order Service & OpenAPI | Flask REST API `/api/v1/orders`, status code chuẩn, JWT Bearer, HATEOAS `_links`, file `openapi.yaml` | `python lab11/client_demo.py` (tự bật server và gọi thử) |
+| lab12 | Lect12 – DFS (NFS / HDFS) Simulator | 1 server + 3 client qua TCP: File Handle + VFS, cache Close-to-Open với TTL và mtime, chunk nhân bản 2x trên 3 thư mục DataNode | `python lab12/dfs_simulator.py` (~6 giây) |
 
 (*) Lect06 không có đề lab riêng (slide 39–40 là Cache Coherence và case study), nên lab6 lấy theo phần Quorum Systems.
 
+**Mục lục:**
+- [Phần 1 – Review lab 1 → 9](#phần-1--review-lab-1--9)
+- [Phần 2 – Lab 10 → 12 (làm mới)](#phần-2--lab-10--12-làm-mới)
+- [Những phần đã lược bớt so với đề gốc](#những-phần-đã-lược-bớt-so-với-đề-gốc)
+
 ---
 
-## Phần 1 – Review lab 1 → 6
+## Phần 1 – Review lab 1 → 9
 
-Đã chạy lại cả 6 lab, đều chạy đúng và ra kết quả như mô tả. Dưới đây là phân tích từng bài: ý chính, cách làm, và những điểm cần biết khi đi bảo vệ.
+Đã chạy lại cả 9 lab và đọc lại toàn bộ code. Cả 9 đều chạy đúng, ra kết quả như mô tả.
+Mỗi bài dưới đây gồm: ý chính, cách làm, kết quả, và những điểm cần biết khi đi bảo vệ.
+Các "điểm còn thiếu" chỉ được ghi lại, **chưa sửa trong code**.
 
 ### Lab 1 – Latency Hiding
 - **Ý chính:** mạng WAN chậm, nên việc gì làm được ở client thì làm ở client để người dùng khỏi phải chờ.
 - **Cách làm:** một file luật `public/rules.js` dùng chung cho trình duyệt, server và `measure.js`, nên client và server luôn kiểm tra giống nhau. Server giả lập độ trễ 300ms.
-- **Kết quả:** kiểm tra ở server mất khoảng 330ms, kiểm tra ở client chưa tới 0.1ms.
+- **Kết quả (đo lại):** kiểm tra ở server mất khoảng 355ms, kiểm tra ở client khoảng 0,05ms.
 - **Điểm tốt:** server **vẫn** kiểm tra lại (không tin client). HTML được escape để chống XSS.
 - **Lưu ý:** `measure.js` đo thời gian kiểm tra ở client bằng Node, không đo trong trình duyệt thật. Thời gian kiểm tra trong trình duyệt được in ra console.
 
@@ -41,7 +57,7 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
 - **Ý chính:** Lamport clock chỉ cho thứ tự toàn phần, còn Vector clock phát hiện được hai sự kiện **song song**.
 - **Cách làm:** 3 thread chỉ nói chuyện với nhau qua `queue`. Khi nhận tin: `L = max(L, L_msg) + 1` và `V = max từng phần tử` rồi tăng phần tử của mình.
 - **Phát hiện song song:** nếu vector của tin nhận được và vector cục bộ không cái nào ≤ cái nào thì in `CONFLICT`. Ví dụ `[2,0,0] || [0,2,0]`.
-- **Lưu ý:** đã đặt `seed` nhưng thứ tự chạy của các thread vẫn do hệ điều hành quyết định, nên mỗi lần chạy kết quả hơi khác nhau. Điều này là bình thường.
+- **Lưu ý:** đã đặt `seed` nhưng thứ tự chạy của các thread vẫn do hệ điều hành quyết định, nên mỗi lần chạy kết quả hơi khác nhau (lần chạy lại này có 4 dòng `CONFLICT`). Điều này là bình thường.
 
 ### Lab 4 – Bully Election
 - **Ý chính:** tiến trình có ID lớn nhất còn sống sẽ làm leader.
@@ -74,20 +90,6 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
   - Version mới bằng max version trong quorum ghi cộng 1. Cách này chỉ đúng khi `NW > N/2`. Với (2, 2), hai lần ghi có thể ra cùng version mà khác giá trị, nhưng demo chưa in ra trường hợp này.
   - Lab 6 chạy trong bộ nhớ (không dùng socket) và trùng ý tưởng với lab 8. Lab 8 là bản đầy đủ hơn, có socket và gossip.
 
-### Tóm tắt review
-| Lab | Đúng yêu cầu chính | Điểm còn thiếu (có thể bổ sung nếu cần) |
-|---|---|---|
-| 1 | ✔ | — |
-| 2 | ✔ | join/stabilize khi node vào/ra |
-| 3 | ✔ | — |
-| 4 | ✔ | khóa cho `in_election`; trace phụ thuộc thời gian |
-| 5 | ✔ | kịch bản coordinator crash (blocking) |
-| 6 | ✔ (tự chọn đề) | demo xung đột version khi NW ≤ N/2 |
-
----
-
-## Phần 2 – Lab 7 → 9 (làm mới)
-
 ### Lab 7 – Client-Centric Session Proxy (`lab7/session_proxy.py`)
 
 **Đề (slide 37–38):** viết một proxy nằm giữa client và 3 server S1, S2, S3. Proxy giữ `V_read` và `V_write`, bảo đảm **Monotonic Reads** và **Read-Your-Writes**, và khi client bị đẩy sang server cũ thì proxy phải lấy các write còn thiếu về.
@@ -116,6 +118,12 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
 [S2] Read executed -> Returns 'Alice' | V_read = (1, 0, 0)
 [CLIENT] Read-Your-Writes Guarantee Preserved!
 ```
+
+**Review (điểm cần biết):**
+- Chỉ làm 2 trong 4 bảo đảm client-centric (đúng theo đề). Chưa có Monotonic Writes và Writes-Follow-Reads.
+- `Server.apply` chỉ nhận write **đúng thứ tự** (`seq == clock + 1`); write đến sai thứ tự bị bỏ qua, không được giữ lại chờ. Trong demo không gặp vì proxy lấy write theo đúng thứ tự log.
+- Khi áp một write lấy từ server khác, code gán thẳng `data[key] = value`. Nếu hai server cùng ghi một key, giá trị cuối phụ thuộc vào **thứ tự áp**, không phải thứ tự ghi. Vector clock ở đây chỉ dùng để biết "đã đủ write chưa", chưa dùng để giải quyết xung đột.
+- Proxy hỏi **mọi** server để tìm write thiếu, và `V_read` gộp cả clock của server chứ không chỉ các write liên quan tới key vừa đọc. Cách này an toàn nhưng chặt hơn mức cần thiết.
 
 **Bài tập số (slide 35):**
 - (2,0,1) < (3,1,1), nên hai sự kiện có quan hệ nhân quả.
@@ -150,6 +158,12 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 2. Bật gossip: sau khoảng 2s cả 5 replica có `'Bob' (Ver 1)`.
 3. Xóa `user1` thì thành tombstone Ver 2. Gossip lan đi, và cả 5 node đều có `TOMBSTONE (Ver 2)`.
 4. **So sánh:** xóa *thật* `user2` trên S1–S3 (không dùng tombstone). Khi gossip, S4 và S5 tưởng S1–S3 "chưa nhận" `user2` nên gửi lại, và `'Carol'` **sống lại** trên cả 5 node. Đây chính là lý do phải có Death Certificate.
+
+**Review (điểm cần biết):**
+- **Hai client ghi cùng lúc có thể ra cùng một version với hai giá trị khác nhau.** Client đọc version rồi mới ghi, giữa hai bước không có khóa. Khi đó `merge` chỉ đổi khi version **lớn hơn hẳn**, nên hai giá trị cùng version sẽ tồn tại mãi, gossip không làm chúng hội tụ. Cách sửa thường dùng: thêm ID của client vào version để phân thắng thua. Demo chỉ có 1 client nên không gặp.
+- Ghi không có rollback: nếu một replica trong quorum ghi chết giữa chừng, `rpc` ném lỗi và các replica đã ghi vẫn giữ bản mới. Demo không tắt replica nào.
+- Tombstone không bao giờ được dọn, nên bộ nhớ lớn dần theo số lần xóa. Hệ thật (ví dụ Cassandra) dọn sau một khoảng thời gian đủ dài để mọi node đã nhận.
+- Thời gian hội tụ thay đổi theo mỗi lần chạy, vì peer được chọn ngẫu nhiên và các thread chạy không cố định.
 
 **Bài tập số (slide 33–34):**
 - N=7, NR=3, NW=5: 3+5=8 > 7 (PASS) và 5 > 3,5 (PASS).
@@ -193,8 +207,11 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 3. **Replay:** kẻ tấn công gửi lại y nguyên gói `Write('Balance', 600)`, và server báo `REPLAY DETECTED!`
 4. **Sửa gói:** kẻ tấn công lật 1 bit trong gói `Write('Balance', 999)`, và server báo `HMAC Verification FAILED`. Đọc lại, Balance vẫn là 600.
 
-**Lưu ý:**
-- Needham-Schroeder gốc có lỗ hổng: nếu K_AB cũ bị lộ, kẻ tấn công có thể phát lại Ticket cũ (slide 28). Cách sửa của Denning-Sacco là thêm timestamp vào Ticket. Bản lab này chưa làm phần đó.
+**Review (điểm cần biết):**
+- Needham-Schroeder gốc có lỗ hổng: nếu K_AB cũ bị lộ, kẻ tấn công có thể phát lại Ticket cũ (slide 28). Cách sửa của Denning-Sacco là thêm timestamp vào Ticket. Bản lab này chưa làm phần đó, và Ticket cũng chưa có thời hạn.
+- **Chống replay mới làm một chiều.** Bob kiểm tra nonce của request, nhưng Alice **không** kiểm tra nonce trong response có khớp với request mình vừa gửi không (hàm `send` chỉ lấy `result`). Kẻ tấn công có thể phát lại một response cũ hợp lệ cho một request mới. Cách sửa: so `nonce` trong response với nonce đã gửi.
+- Tập nonce đã dùng (`seen`) lớn dần mãi trong suốt phiên. Hệ thật thường kèm timestamp để chỉ cần nhớ nonce trong một khoảng thời gian.
+- Request và response dùng chung một khóa K_AB cho cả hai chiều. Dùng khóa riêng cho mỗi chiều sẽ chặn được việc phản chiếu gói tin (reflection).
 - Khóa dài hạn K_A, K_B được sinh sẵn khi chương trình khởi động (coi như đã đăng ký với KDC từ trước).
 
 **Bài tập số (slide 37–38):**
@@ -203,12 +220,256 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 - Threshold signature với c=2 server bị chiếm: cần m = c+1 = 3 phần chữ ký.
 - Diffie-Hellman với p=23, g=5, a=6, b=15: A=8, B=19, khóa chung K=2.
 
+### Tóm tắt review
+| Lab | Đúng yêu cầu chính | Điểm còn thiếu (có thể bổ sung nếu cần) |
+|---|---|---|
+| 1 | ✔ | — |
+| 2 | ✔ | join/stabilize khi node vào/ra |
+| 3 | ✔ | — |
+| 4 | ✔ | khóa cho `in_election`; trace phụ thuộc thời gian |
+| 5 | ✔ | kịch bản coordinator crash (blocking) |
+| 6 | ✔ (tự chọn đề) | demo xung đột version khi NW ≤ N/2 |
+| 7 | ✔ | giải quyết xung đột khi 2 server ghi cùng key; write đến sai thứ tự |
+| 8 | ✔ | phân thắng thua khi 2 lần ghi trùng version; dọn tombstone |
+| 9 | ✔ | kiểm tra nonce của response; timestamp trong Ticket (Denning-Sacco) |
+
+---
+
+## Phần 2 – Lab 10 → 12 (làm mới)
+
+### Lab 10 – Secure Group Multicast & ABAC (`lab10/secure_group.py`)
+
+**Đề (slide 36–40):**
+1. Cây khóa nhị phân LKH để đổi khóa nhóm khi có thành viên vào (Join) hoặc ra (Leave).
+2. Mã hóa payload multicast bằng AES-256-GCM với khóa gốc của nhóm.
+3. ABAC Policy Engine kiểm tra Subject, Action và Time.
+4. In trace cho thấy số rekey block là O(log N).
+
+**Vấn đề cần giải quyết:** cả nhóm dùng chung một khóa để đọc tin multicast. Mỗi khi có người vào hoặc ra, khóa đó phải đổi.
+- Nếu chỉ có một khóa chung (Flat Group Key), khi một người rời nhóm thì server phải gửi khóa mới **riêng cho từng người còn lại**: N−1 tin nhắn.
+- LKH xếp thành viên vào lá của một cây khóa. Khi đổi khóa, chỉ cần đổi các khóa trên **một đường** từ lá lên gốc: khoảng log N tin nhắn.
+
+**Cây khóa (N=8, cao h=3):**
+```
+                 K_0                 <- khóa gốc = khóa nhóm
+           K_1         K_2           <- KEK (khóa dùng để mã hóa khóa khác)
+         K_3  K_4    K_5  K_6
+        7  8  9 10  11 12 13 14      <- lá: khóa riêng của từng thành viên
+```
+Mỗi thành viên chỉ giữ khóa lá của mình và các khóa trên đường lên gốc: h + 1 = 4 khóa.
+Ví dụ thành viên ở lá 14 giữ `K_14, K_6, K_2, K_0`.
+
+**Cách làm:**
+- **Key Server** là một TCP server (port 9701), giữ cây trong bộ nhớ, biết thành viên nào ở lá nào.
+- **Client** mở một kết nối TCP và một thread nghe. Mỗi client có một khóa riêng đã đăng ký trước với server (chính là khóa lá).
+- **"Multicast"** được giả lập bằng cách server gửi cùng một frame cho **mọi** socket đang nối, kể cả client chưa vào nhóm hoặc đã rời nhóm. Giống multicast thật: ai cũng nghe được, chỉ người có khóa mới đọc được.
+- **Join:** mỗi khóa trên đường đi được đổi mới.
+  - Người cũ nhận khóa mới qua multicast, mã hóa bằng **khóa cũ của chính nút đó**: h = 3 block.
+  - Người mới nhận khóa qua unicast, mã hóa bằng khóa lá của họ.
+- **Leave:** mỗi khóa trên đường đi được đổi mới, khóa mới mã hóa bằng khóa của **từng nút con**. Không tạo block nào cho lá của người rời. Các block xếp từ dưới lên, nên client giải mã được khóa tầng dưới rồi dùng nó mở block tầng trên.
+- **Gửi tin:** client gửi yêu cầu publish cho server (mã hóa bằng khóa riêng). Server chạy ABAC, đạt thì mã hóa bằng `K_0` và multicast.
+- **AES-256-GCM** vừa mã hóa vừa xác thực. Số version của khóa được đưa vào AAD, nên một block của version cũ không dùng lại được cho version mới.
+- **ABAC:** `ALLOW IF Role == 'Publisher' AND Action == 'publish' AND 08:00 <= Time <= 18:00`. Thời gian là thuộc tính môi trường do demo truyền vào để thử được nhiều giờ khác nhau. Server còn kiểm tra thêm người gửi có còn trong nhóm không.
+
+**Kịch bản và kết quả:**
+1. Nhóm có 7 thành viên, `client_3` chưa vào nhưng đang nghe lén kênh. Gửi M1: thành viên đọc được, `client_3` thì không.
+2. `client_3` vào nhóm: **3 block** rekey. `client_3` thử giải mã M1 đã ghi lại từ trước và **không được**. Tin M2 sau đó thì đọc được.
+3. `client_7` rời nhóm nhưng vẫn nghe: **5 block** rekey (Flat Group Key cần 7 unicast). `client_7` không mở được block nào và không đọc được M3.
+4. ABAC: Subscriber gửi tin bị từ chối; Publisher gửi lúc 23:30 bị từ chối; `client_7` đã rời bị từ chối; Publisher gửi lúc 17:59 được chấp nhận.
+
+```
+[CLIENT_3] Joining Group... LKH Rekey Sent: 3 Encrypted Blocks (h = log2 8 = 3).
+[CLIENT_7] Received Rekey Msg (JOIN client_3) -> Updated Path Keys [K_2, K_0] to Root Key K_0 v9.
+[CLIENT_7] Leaving Group... Executing Backward Secrecy Rekey.
+[KEY_SERVER] Generated 5 Rekey Blocks (<= d*h = 2*3 = 6; Flat Group Key cần 7 unicast). Revoked client_7.
+[CLIENT_7] Received Rekey Msg (LEAVE client_7) -> KHÔNG mở được block nào (vẫn giữ K_0 v9 cũ).
+[ABAC_ENGINE] Policy Evaluation PASSED (Role = 'Publisher', Action = 'publish', Time = 11:00) -> Multicast Delivered.
+[KEY_SERVER] Multicast Dispatch: AES-256-GCM Payload Encrypted under Root Key K_0 (v10).
+[CLIENT_7] CANNOT decrypt message from client_1 (không có K_0 v10).
+```
+
+Cuối chương trình tự kiểm tra 2 mục trong Verification Checklist của slide 39 (người mới không đọc được tin cũ, người đã rời không đọc được tin mới) và đều `PASS`.
+
+**Lưu ý khi bảo vệ:**
+- **Leave ra 5 block chứ không phải 6 như trace mẫu.** Công thức `d × h = 6` trong slide là mức trần: mỗi tầng 2 block. Ở tầng thấp nhất, một trong hai nút con chính là lá của người vừa rời nên không cần block cho nó. Số thật là `d × h − 1 = 5`. Chương trình in con số thật và ghi rõ `<= d*h`.
+- **Tên gọi Forward / Backward Secrecy.** Slide 12 gọi Join là "Forward Secrecy" và Leave là "Backward Secrecy", và trace trong code đi theo slide. Nhiều tài liệu khác gọi ngược lại (backward secrecy: người mới không đọc được tin cũ; forward secrecy: người đã rời không đọc được tin mới). Nội dung bảo đảm thì giống nhau, chỉ khác tên.
+- Key Server là điểm tin cậy duy nhất và cũng là điểm chết duy nhất. Nó biết mọi khóa và đọc được mọi tin.
+
+**Bài tập số (slide 33–34):**
+- RSA với p=5, q=11: n=55, φ=40, e=3, d=27 (vì 3×27 = 81 = 2×40 + 1). Mã hóa 9 được 9³ mod 55 = 14; giải mã 14²⁷ mod 55 = 9.
+- Diffie-Hellman với p=23, g=5, a=4, b=3: A = 5⁴ mod 23 = 4, B = 5³ mod 23 = 10, khóa chung K = 10⁴ mod 23 = 4³ mod 23 = 18.
+- LKH với N=1024, d=2: cao h = 10; mỗi thành viên giữ 11 khóa; Leave cần 2×10 = 20 block, so với 1023 tin nhắn của Flat Group Key, giảm khoảng 98%.
+
+### Lab 11 – RESTful Order Management Service & OpenAPI (`lab11/`)
+
+**Đề (slide 38–39):** dịch vụ REST mức Richardson Level 2 trở lên, có tài liệu OpenAPI 3.0.
+1. Resource URI `/api/v1/orders` với GET, POST, PUT, DELETE.
+2. Status code: 200, 201, 400, 404, 409.
+3. Bộ lọc xác thực JWT Bearer Token.
+4. HATEOAS `_links` cho các bước chuyển trạng thái (Pay, Cancel, Ship).
+5. File OpenAPI 3.0 YAML hợp lệ.
+
+**File:**
+| File | Vai trò |
+|---|---|
+| `order_service.py` | Server Flask. Chạy riêng: `python lab11/order_service.py` (port 5000) |
+| `client_demo.py` | Tự bật server trên port 5011 rồi gọi thử toàn bộ kịch bản qua HTTP thật |
+| `openapi.yaml` | Hợp đồng OpenAPI 3.0.3. Server cũng trả file này ở `GET /api/v1/openapi.yaml` |
+
+**Vòng đời đơn hàng:**
+```
+CREATED --pay--> PAID --ship--> SHIPPED
+   \--cancel--> CANCELLED
+```
+
+**Bảng API:**
+| Verb + URI | Việc làm | Status code |
+|---|---|---|
+| `POST /auth/login` | Đăng nhập, nhận JWT | 200, 400, 401 |
+| `GET /orders` (`?status=`) | Danh sách đơn | 200 |
+| `POST /orders` | Tạo đơn, trả header `Location` | 201, 400 |
+| `GET /orders/{id}` | Xem một đơn | 200, 404 |
+| `PUT /orders/{id}` | Thay toàn bộ `item`, `quantity` | 200, 400, 404, 409 |
+| `DELETE /orders/{id}` | Xóa đơn | 204, 404, 409 |
+| `POST /orders/{id}/pay` \| `cancel` \| `ship` | Chuyển trạng thái | 200, 403 (ship), 404, 409 |
+
+Mọi URI dưới `/orders` đều cần `Authorization: Bearer <token>`, thiếu hoặc sai thì 401.
+
+**Cách làm:**
+- **Mức Richardson:** URI là danh từ (Level 1), dùng đúng verb và status code (Level 2), có `_links` (Level 3).
+- **409 Conflict** dùng khi request đúng định dạng nhưng **trái với trạng thái hiện tại**: xóa đơn đã thanh toán, thanh toán hai lần, sửa đơn đã giao.
+- **JWT (HS256)** tự viết bằng `hmac` và `base64` của thư viện chuẩn, để thấy rõ cấu trúc `header.payload.signature`.
+  - Payload chứa `sub` (tên), `role`, `exp` (hạn dùng).
+  - Server kiểm tra chữ ký **trước** rồi mới đọc payload, và luôn tính bằng HS256 chứ không tin trường `alg` do client gửi.
+  - Server **không giữ session**: mọi thông tin người dùng nằm trong token. Đây là ràng buộc Stateless của REST, nên request nào cũng có thể vào bất kỳ server nào sau load balancer.
+- **Bộ lọc** là `before_request` của Flask, chạy trước mọi handler. `after_request` in trace theo mẫu của slide.
+- **HATEOAS:** hàm `links_for` chỉ đưa ra những bước **hợp lệ** với trạng thái hiện tại.
+
+  | Trạng thái | `_links` (ngoài `self`, `collection`) |
+  |---|---|
+  | CREATED | `update`, `pay`, `cancel`, `delete` |
+  | PAID | `ship` |
+  | SHIPPED | — |
+  | CANCELLED | `delete` |
+
+  Client demo không tự ghép URL `/pay`, `/ship`: nó đọc `href` và `method` trong `_links` của response trước rồi gọi theo.
+- **Idempotent:** PUT và DELETE gửi lại nhiều lần thì trạng thái server vẫn như gửi một lần (DELETE lần hai trả 404 nhưng server không đổi gì thêm). POST tạo đơn thì không idempotent: gửi hai lần ra hai đơn.
+- **Phân quyền:** `ship` chỉ dành cho role `staff`. Role lấy từ JWT, sai role thì 403.
+
+**Kết quả (rút gọn, giống trace mẫu slide 39):**
+```
+[HTTP GET /api/v1/orders] -> 401 UNAUTHORIZED | Thiếu header Authorization: Bearer <token>
+[HTTP POST /api/v1/orders] -> 201 CREATED | JWT Validated (alice/customer) | Order 102 created (state CREATED).
+[HTTP GET /api/v1/orders/102] -> 200 OK | JWT Validated (alice/customer) | Payload + HATEOAS _links returned.
+[HTTP POST /api/v1/orders/102/pay] -> 200 OK | JWT Validated (alice/customer) | State Updated to PAID.
+[HTTP DELETE /api/v1/orders/102] -> 409 CONFLICT | JWT Validated (alice/customer) | Cannot delete paid order.
+[HTTP POST /api/v1/orders/102/ship] -> 403 FORBIDDEN | JWT Validated (alice/customer) | Chỉ role 'staff' được ship đơn hàng
+[HTTP POST /api/v1/orders/102/ship] -> 200 OK | JWT Validated (staff/staff) | State Updated to SHIPPED.
+```
+Demo kiểm tra 18 tình huống và cả 18 đều ra đúng status code mong đợi. Trong đó có 4 tình huống về JWT: không có token, sai mật khẩu, token bị sửa payload (tự đổi role thành `staff`), token hết hạn.
+
+**Kiểm tra `openapi.yaml`:** đã chạy qua `openapi-spec-validator` và hợp lệ theo OpenAPI 3.0.3. Đã so với các route trong code: 9 operation khớp cả hai phía. Hai bước kiểm tra này làm bằng tay một lần, không nằm trong `client_demo.py`.
+
+**Lưu ý khi bảo vệ:**
+- File YAML được **viết tay** (design-first), không sinh tự động từ code. Sửa route thì phải sửa cả file này.
+- Dữ liệu lưu trong bộ nhớ, tắt server là mất. Tài khoản mẫu (`alice` / `staff`) và mật khẩu viết thẳng trong code, chỉ để làm lab.
+- Khóa ký JWT sinh ngẫu nhiên mỗi lần bật server, nên token cũ hết dùng được sau khi khởi động lại. Muốn cố định thì đặt biến môi trường `JWT_SECRET`.
+- JWT không thu hồi được trước hạn (đây là cái giá của stateless). Đơn hàng có trường `owner` nhưng chưa giới hạn "chỉ chủ đơn mới được sửa".
+- Chạy bằng server phát triển của Flask qua HTTP thường. Dùng thật thì cần HTTPS, vì token đi trong header ở dạng đọc được.
+
+**Bài tập số (slide 36):**
+- Cùng 200 byte dữ liệu: SOAP 1400 byte, REST/JSON 350 byte, gRPC 230 byte. gRPC nhỏ hơn SOAP 1 − 230/1400 ≈ 83,6% (slide ghi 83,5%); REST nhỏ hơn SOAP 75%.
+- 1.000.000 GET/ngày × 10 KB = 10 GB. Cache trúng 85% thì chỉ 15% tới server gốc: 1,5 GB, tiết kiệm 8,5 GB.
+
+### Lab 12 – Distributed File System: NFS / HDFS (`lab12/dfs_simulator.py`)
+
+**Đề (slide 38–39):** 1 server (VFS / Metadata Manager) dùng socket và 3 client.
+1. Sinh File Handle và bảng tra VFS.
+2. Cache theo Close-to-Open consistency, kiểm tra lại bằng `mtime` khi hết TTL.
+3. HDFS: nhân bản chunk 2x trên các thư mục DataNode giả lập.
+4. In trace RPC.
+
+**Kiến trúc:**
+- **Server** (TCP port 9801) vừa là NFS server vừa là HDFS NameNode. Nó chỉ giữ **metadata** trong RAM:
+  - bảng VFS: `path → inode`
+  - inode: generation, mtime, size, danh sách chunk
+  - chunk: nằm ở DataNode nào, CRC-32
+- **DataNode** là một thư mục thật `lab12/datanodes/dn1..dn3`, mỗi chunk là một file. Mỗi DataNode có một thread gửi heartbeat.
+- **Client** có kết nối TCP riêng và cache trong RAM.
+
+**Phần NFS:**
+- **File Handle** = băm của (Volume ID, Inode, Generation), ví dụ `0x2860A0`. Client coi nó là chuỗi mờ, không hiểu bên trong.
+- **Stateless:** server không nhớ client nào đang mở file gì. RPC nào (`GETATTR`, `READ`, `WRITE`) cũng tự mang File Handle. Server crash rồi bật lại thì không có bảng "file đang mở" nào phải dựng lại.
+- **Generation:** xóa file rồi tạo file mới, inode cũ được dùng lại nhưng generation tăng. Handle cũ vì thế không còn khớp, và server trả `ESTALE`. Nếu không có generation, client cầm handle cũ sẽ đọc nhầm sang file mới.
+- **Cache phía client:**
+
+  | Thao tác | Client làm gì |
+  |---|---|
+  | `OPEN` | **Luôn** gửi `GETATTR`. `mtime` khác bản cache thì bỏ cache, tải lại |
+  | `READ` | Còn TTL: đọc cache, **không gửi RPC**. Hết TTL: `GETATTR` rồi so `mtime` |
+  | `WRITE` | Chỉ ghi vào bộ đệm cục bộ |
+  | `CLOSE` | Đẩy bộ đệm lên server |
+
+- **Close-to-Open** nghĩa là: bên ghi `CLOSE` xong thì bên nào `OPEN` sau đó chắc chắn thấy bản mới. Ở giữa thì không bảo đảm.
+
+**Phần HDFS:**
+- File được cắt thành chunk 16 byte (HDFS thật là 128 MB; để nhỏ cho một câu văn cũng thành nhiều chunk).
+- Mỗi chunk ghi vào 2 DataNode đang giữ ít chunk nhất.
+- **Heartbeat:** DataNode nào im lặng quá 0,7 giây thì NameNode coi là chết, rồi chép các chunk bị thiếu từ bản còn sống sang DataNode khác cho đủ 2 bản.
+- **CRC-32:** khi đọc, chunk nào sai checksum thì đọc bản còn lại và chép đè lên bản hỏng.
+
+**Kịch bản và kết quả:**
+1. `CLIENT_1` tạo file, ghi `v1`, close: 35 byte thành 3 chunk, mỗi chunk ở 2 DataNode. `CLIENT_2` lookup cùng path nhận **cùng handle**.
+2. `CLIENT_2` ghi `v2` và close. `CLIENT_1` đọc ngay thì **vẫn ra `v1`** (TTL còn hạn, không hỏi server). Chờ hết TTL rồi đọc lại: `mtime` khác, bỏ cache, ra `v2`. Đây là điểm yếu NFS chấp nhận để đổi lấy tốc độ.
+3. `CLIENT_3` ghi `v3` nhưng chưa close: `CLIENT_1` open vẫn thấy `v2`. `CLIENT_3` close, `CLIENT_1` open lại thì thấy `v3` ngay, không cần chờ TTL.
+4. `CLIENT_2` xóa file rồi tạo lại cùng tên. `CLIENT_1` dùng handle cũ, nhận `ESTALE`, lookup lại và nhận handle mới.
+5. `DataNode_2` chết: NameNode phát hiện mất heartbeat, chép Chunk 109 từ DataNode_1 sang DataNode_3.
+6. Làm hỏng 1 byte của một chunk trên đĩa: CRC phát hiện, client vẫn đọc ra đúng nội dung.
+
+```
+[CLIENT_2] LOOKUP path='/docs/file.txt' -> Obtained FileHandle 0x2860A0.
+[CLIENT_2] OPEN -> Fetched Attributes (mtime=17000011). Cached locally.
+[SERVER] WRITE FileHandle 0x2860A0 by CLIENT_2 -> 24 bytes, 2 chunks x2 (mtime=17000026).
+[CLIENT_1] READ -> 'v1: Hello distributed file systems!' (cache hit, TTL chưa hết, không gửi RPC nào).
+[CLIENT_1] READ -> TTL expired -> Re-validated mtime (17000026 != 17000011). Local cache invalidated!
+[SERVER] GETATTR FileHandle 0x2860A0 from CLIENT_1 -> ESTALE (stale file handle).
+[HDFS_MASTER] DataNode_2 failed (no heartbeat for 0.7s)! 1 chunks under-replicated.
+[HDFS_MASTER] Re-replicating Chunk 109: DataNode_1 -> DataNode_3 (2x restored).
+[HDFS_MASTER] Checksum mismatch: Chunk 109 on DataNode_1 corrupted -> read from another replica and repaired.
+```
+Cuối chương trình tự kiểm tra 8 mục và cả 8 đều `PASS`. Số `mtime` và số chunk thay đổi nhẹ giữa các lần chạy.
+
+**Lưu ý khi bảo vệ:**
+- **Bài này ghép hai mô hình vào một server** vì đề yêu cầu cả hai. NFS thật cho ghi đè ngẫu nhiên; HDFS thật chỉ ghi một lần rồi đọc nhiều lần (WORM) và client đọc dữ liệu **thẳng** từ DataNode. Ở đây server đứng giữa đọc/ghi chunk giúp client, và mỗi lần `WRITE` thay toàn bộ file.
+- Các mốc thời gian được rút ngắn cho demo chạy nhanh:
+
+  | Tham số | Trong lab | Hệ thật (theo slide) |
+  |---|---|---|
+  | TTL của attribute cache | 1 s | 3–60 s |
+  | Chu kỳ heartbeat | 0,2 s | 3 s |
+  | Coi DataNode là chết sau | 0,7 s | 10 phút |
+  | Kích thước chunk | 16 byte | 128 MB |
+
+- `mtime` là đồng hồ logic của server (luôn tăng), nên không phụ thuộc đồng hồ của client.
+- Hai client cùng ghi một file thì ai close sau sẽ thắng (last-close-wins). Slide 8 cũng nói kết quả ghi đồng thời trong NFS là không xác định.
+- Metadata chỉ nằm trong RAM. HDFS thật có edit log và FSImage để NameNode khởi động lại không mất metadata.
+- Với 3 DataNode và nhân bản 2x, hệ chịu được **một** DataNode chết. Chết thêm một cái nữa thì không còn chỗ để nhân bản.
+
+**Bài tập số (slide 36):**
+- 1000 lần đọc 1 KB qua WAN có RTT 10 ms: NFS gửi 1000 RPC `READ`, mất 1000 × 10 ms = 10 giây. AFS tải cả file bằng 1 RPC `FETCH`, mất 10 ms. Nhanh hơn 1000 lần.
+- File 1 TB (1.000.000 MB), block 128 MB, nhân bản 3x: ceil(1.000.000 / 128) = 7813 block. Dung lượng chiếm khoảng 3 TB.
+  - Slide ghi `7.813 × 128 × 3 = 2.999.999 MB`, nhưng phép nhân đó thật ra bằng 3.000.192 MB.
+  - Con số đúng hơn là 1.000.000 × 3 = 3.000.000 MB, vì block cuối chỉ chứa 64 MB và HDFS không chiếm đủ 128 MB cho block chưa đầy.
+
 ---
 
 ## Những phần đã lược bớt so với đề gốc
-- Không viết báo cáo thiết kế riêng (lab 4, 5, 7). Phần giải thích nằm trong README này và trong docstring đầu mỗi file.
+- Không viết báo cáo thiết kế riêng (lab 4, 5, 7, 10, 12). Phần giải thích nằm trong README này và trong docstring đầu mỗi file.
 - Lab 2: dựng finger table trực tiếp từ danh sách node, không có giao thức join/stabilize; dùng socket, không dùng MPI.
-- Lab 4, 8, 9: các "tiến trình" chạy trong 1 chương trình (mỗi thread có một socket riêng), cho dễ chạy và dễ xem log.
+- Lab 4, 8, 9, 10, 12: các "tiến trình" chạy trong 1 chương trình (mỗi thread có một socket riêng), cho dễ chạy và dễ xem log.
 - Lab 7: 3 server là object trong cùng chương trình (đề không bắt buộc socket). Độ trễ mạng được giả lập bằng việc write chưa lan sang server khác.
 - Lab 8: gossip gửi toàn bộ dữ liệu mỗi lần (không dùng digest hay Merkle tree), đủ dùng cho dữ liệu nhỏ.
 - Lab 9: chưa có Denning-Sacco (timestamp trong Ticket) và chưa có thời hạn cho Ticket.
+- Lab 10: cây có sức chứa cố định 8 lá, không tự lớn thêm. Multicast giả lập bằng TCP gửi cho mọi kết nối, không dùng IP multicast thật. Khóa riêng của client coi như đã đăng ký sẵn với Key Server.
+- Lab 11: lưu trong bộ nhớ, không có CSDL. Không có Swagger UI; hợp đồng là file `openapi.yaml` viết tay.
+- Lab 12: `WRITE` thay cả file, không ghi theo offset. Không có khóa file (NFSv4), không có Rack Awareness, NameNode không ghi edit log.

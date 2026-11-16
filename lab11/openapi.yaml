@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Order Management Service
+  version: 1.0.0
+  description: >
+    Lab 11 - RESTful Order Management Service (Richardson Level 3).
+    Vòng đời đơn hàng: CREATED -> PAID -> SHIPPED, hoặc CREATED -> CANCELLED.
+    Mỗi response của đơn hàng có `_links` (HATEOAS) liệt kê các bước chuyển hợp lệ.
+servers:
+  - url: http://127.0.0.1:5000/api/v1
+tags:
+  - name: auth
+  - name: orders
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Đăng nhập, nhận JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders:
+    get:
+      tags: [orders]
+      operationId: listOrders
+      summary: Danh sách đơn hàng
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+      responses:
+        '200':
+          description: Danh sách đơn hàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Tạo đơn hàng mới (không idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '201':
+          description: Đã tạo
+          headers:
+            Location:
+              description: URI của đơn hàng vừa tạo
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Xem một đơn hàng
+      responses:
+        '200':
+          description: Đơn hàng kèm _links
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [orders]
+      operationId: replaceOrder
+      summary: Thay toàn bộ item và quantity (idempotent), chỉ khi đơn ở trạng thái CREATED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [orders]
+      operationId: deleteOrder
+      summary: Xóa đơn hàng (idempotent), không xóa được đơn PAID hoặc SHIPPED
+      responses:
+        '204':
+          description: Đã xóa
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /orders/{orderId}/pay:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: payOrder
+      summary: Thanh toán (CREATED -> PAID)
+      responses:
+        '200':
+          $ref: '#/components/responses/OrderOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: cancelOrder
+      summary: Hủy đơn (CREATED -> CANCELLED)
+      responses:
+        '200':
+          $ref: '#/components/responses/OrderOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /orders/{orderId}/ship:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: shipOrder
+      summary: Giao hàng (PAID -> SHIPPED), chỉ role staff
+      responses:
+        '200':
+          $ref: '#/components/responses/OrderOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    OrderOk:
+      description: Đơn hàng sau khi chuyển trạng thái, kèm _links mới
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Order'
+    BadRequest:
+      description: Body không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Thiếu JWT, JWT sai chữ ký hoặc đã hết hạn
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: JWT hợp lệ nhưng role không đủ quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Không có đơn hàng này
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Thao tác không hợp lệ với trạng thái hiện tại của đơn hàng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: alice
+        password:
+          type: string
+          format: password
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          example: 3600
+    OrderStatus:
+      type: string
+      enum: [CREATED, PAID, SHIPPED, CANCELLED]
+    OrderInput:
+      type: object
+      required: [item, quantity]
+      properties:
+        item:
+          type: string
+          minLength: 1
+          example: Laptop
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+    Link:
+      type: object
+      required: [href, method]
+      properties:
+        href:
+          type: string
+          example: /api/v1/orders/102/pay
+        method:
+          type: string
+          enum: [GET, POST, PUT, DELETE]
+    Order:
+      type: object
+      required: [id, status, owner, item, quantity, _links]
+      properties:
+        id:
+          type: integer
+          example: 102
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        owner:
+          type: string
+          example: alice
+        item:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        _links:
+          type: object
+          description: >
+            HATEOAS. Luôn có self và collection. CREATED thêm update, pay, cancel, delete;
+            PAID thêm ship; CANCELLED thêm delete; SHIPPED không có thêm gì.
+          additionalProperties:
+            $ref: '#/components/schemas/Link'
+    OrderList:
+      type: object
+      required: [items, _links]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        _links:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Link'
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [status, message]
+          properties:
+            status:
+              type: integer
+              example: 409
+            message:
+              type: string
+              example: Cannot delete paid order.
