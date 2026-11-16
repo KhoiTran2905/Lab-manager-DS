@@ -18,9 +18,9 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
 | lab4 | Lect04 – Leader Election | Thuật toán Bully, 5 tiến trình dùng UDP socket, heartbeat, tắt leader P5 → bầu được P4 | `python lab4/bully_election.py` |
 | lab5 | Lect05 – 2PC Simulator | 1 Coordinator + 3 Participant trên TCP, ghi WAL ra `lab5/logs/`; Tx 101 bị abort vì P3 xung đột khóa; Tx 102 có P2 crash rồi khôi phục từ WAL | `python lab5/two_phase_commit.py` |
 | lab6 | Lect06 – Quorum (*) | N=5 bản sao, kiểm tra luật NR+NW>N và NW>N/2, so sánh cấu hình hợp lệ và không hợp lệ (đọc ra dữ liệu cũ) | `python lab6/quorum.py` |
-| lab7 | Lect07 – Session Proxy | Proxy giữ V_read / V_write, bảo đảm Monotonic Reads và Read-Your-Writes trên 3 server S1–S3 bị lệch nhau | `python lab7/session_proxy.py` |
-| lab8 | Lect08 – Gossip & Quorum | 5 replica TCP, quorum Gifford (NR, NW), gossip Push-Pull mỗi 2s, xóa bằng Tombstone | `python lab8/gossip_quorum.py` (~10 giây) |
-| lab9 | Lect09 – Secure RPC & KDC | KDC + Alice + Bob qua TCP: Needham-Schroeder, AES-CBC, HMAC-SHA256, chống replay bằng nonce | `python lab9/secure_rpc.py` |
+| lab7 | Lect07 – Session Proxy | Proxy giữ V_read / V_write, bảo đảm Monotonic Reads và Read-Your-Writes trên 3 server S1–S3 bị lệch nhau; xung đột ghi giải quyết bằng nhãn Lamport | `python lab7/session_proxy.py` |
+| lab8 | Lect08 – Gossip & Quorum | 5 replica TCP, quorum Gifford (NR, NW), gossip Push-Pull mỗi 2s, xóa bằng Tombstone, ghi trùng version phân thắng thua bằng ID client | `python lab8/gossip_quorum.py` (~10 giây) |
+| lab9 | Lect09 – Secure RPC & KDC | KDC + Alice + Bob qua TCP: Needham-Schroeder, AES-CBC, HMAC-SHA256, chống replay bằng nonce ở cả request và response | `python lab9/secure_rpc.py` |
 | lab10 | Lect10 – Secure Group Multicast & ABAC | Key Server giữ cây khóa LKH (N=8), đổi khóa khi Join / Leave, multicast mã hóa AES-256-GCM, ABAC kiểm tra Role + Time | `python lab10/secure_group.py` |
 | lab11 | Lect11 – RESTful Order Service & OpenAPI | Flask REST API `/api/v1/orders`, status code chuẩn, JWT Bearer, HATEOAS `_links`, file `openapi.yaml` | `python lab11/client_demo.py` (tự bật server và gọi thử) |
 | lab12 | Lect12 – DFS (NFS / HDFS) Simulator | 1 server + 3 client qua TCP: File Handle + VFS, cache Close-to-Open với TTL và mtime, chunk nhân bản 2x trên 3 thư mục DataNode | `python lab12/dfs_simulator.py` (~6 giây) |
@@ -38,7 +38,7 @@ Trên Windows, nếu tiếng Việt bị lỗi font, chạy `set PYTHONIOENCODIN
 
 Đã chạy lại cả 9 lab và đọc lại toàn bộ code. Cả 9 đều chạy đúng, ra kết quả như mô tả.
 Mỗi bài dưới đây gồm: ý chính, cách làm, kết quả, và những điểm cần biết khi đi bảo vệ.
-Các "điểm còn thiếu" chỉ được ghi lại, **chưa sửa trong code**.
+Ba lỗi tìm thấy khi review lab 7, 8, 9 **đã được sửa trong code** (xem mục "Đã sửa sau review" của từng lab). Các "điểm còn thiếu" khác chỉ được ghi lại, chưa sửa.
 
 ### Lab 1 – Latency Hiding
 - **Ý chính:** mạng WAN chậm, nên việc gì làm được ở client thì làm ở client để người dùng khỏi phải chờ.
@@ -105,7 +105,8 @@ Các "điểm còn thiếu" chỉ được ghi lại, **chưa sửa trong code**
 **Kịch bản:**
 1. *Read-Your-Writes:* ghi `profile_name='Alice'` vào S1, rồi đọc ở S2 có clock (0,0,0). Proxy lấy W1 từ S1 nên đọc ra `'Alice'`.
 2. *Monotonic Reads:* hộp thư ở S1 và S2 có 3 email, S3 có 5 email. Đọc S3 được 5 email; refresh thì bị đẩy sang S2. Proxy lấy write từ S3 về, nên vẫn thấy 5 email chứ không "mất" 2 email.
-3. Chạy lại 2 kịch bản trên với proxy **tắt kiểm tra** (`enforce=False`) để thấy lỗi xảy ra: đọc ra `None`, và email bị biến mất.
+3. *Xung đột ghi:* S1 ghi `theme='dark'` và S2 ghi `theme='light'` song song. Ba server nhận hai write theo ba thứ tự khác nhau nhưng cùng ra `'light'`.
+4. Chạy lại kịch bản 1 và 2 với proxy **tắt kiểm tra** (`enforce=False`) để thấy lỗi xảy ra: đọc ra `None`, và email bị biến mất.
 
 **Kết quả (rút gọn, giống trace mẫu slide 38):**
 ```
@@ -119,10 +120,25 @@ Các "điểm còn thiếu" chỉ được ghi lại, **chưa sửa trong code**
 [CLIENT] Read-Your-Writes Guarantee Preserved!
 ```
 
+**Đã sửa sau review:**
+- **Lỗi cũ:** khi áp một write lấy từ server khác, code gán thẳng `data[key] = value`. Nếu hai server cùng ghi một key, giá trị cuối phụ thuộc vào **thứ tự áp**, nên các server có thể lệch nhau mãi.
+- **Cách sửa:** mỗi write mang thêm nhãn `(Lamport timestamp, server gốc)`. Giá trị của key là write có nhãn **lớn nhất** (last-writer-wins).
+  - Write tạo ra sau khi đã thấy write khác thì có nhãn lớn hơn, nên thứ tự nhân quả được giữ.
+  - Hai write song song có nhãn bằng nhau thì server ID lớn hơn thắng. Luật này giống nhau ở mọi server nên tất cả hội tụ.
+- **Sửa kèm:** write đến sai thứ tự (ví dụ S3#2 tới trước S3#1) trước đây bị bỏ qua. Giờ nó được giữ trong `pending` và áp khi write đứng trước đã tới.
+
+```
+[SYSTEM] S1 ghi theme='dark' (nhãn 1, S1) || S2 ghi theme='light' (nhãn 1, S2)
+[S1] theme = 'light' | Clock = (1, 1, 0)
+[S2] theme = 'light' | Clock = (1, 1, 0)
+[S3] theme = 'light' | Clock = (1, 1, 0)
+[SYSTEM] S1 ghi tiếp theme='blue' (nhãn 2) -> S2 theme = 'blue'
+[SYSTEM] S1 nhận write S3#2 trước S3#1: note = None, đang chờ 1 write -> nhận nốt S3#1: note = 'b'
+```
+
 **Review (điểm cần biết):**
 - Chỉ làm 2 trong 4 bảo đảm client-centric (đúng theo đề). Chưa có Monotonic Writes và Writes-Follow-Reads.
-- `Server.apply` chỉ nhận write **đúng thứ tự** (`seq == clock + 1`); write đến sai thứ tự bị bỏ qua, không được giữ lại chờ. Trong demo không gặp vì proxy lấy write theo đúng thứ tự log.
-- Khi áp một write lấy từ server khác, code gán thẳng `data[key] = value`. Nếu hai server cùng ghi một key, giá trị cuối phụ thuộc vào **thứ tự áp**, không phải thứ tự ghi. Vector clock ở đây chỉ dùng để biết "đã đủ write chưa", chưa dùng để giải quyết xung đột.
+- Last-writer-wins **bỏ đi** một trong hai write song song (ở trên là `'dark'`) mà không báo cho ai. Hệ cần giữ cả hai thì phải trả cả hai bản cho ứng dụng tự gộp.
 - Proxy hỏi **mọi** server để tìm write thiếu, và `V_read` gộp cả clock của server chứ không chỉ các write liên quan tới key vừa đọc. Cách này an toàn nhưng chặt hơn mức cần thiết.
 
 **Bài tập số (slide 35):**
@@ -158,9 +174,25 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 2. Bật gossip: sau khoảng 2s cả 5 replica có `'Bob' (Ver 1)`.
 3. Xóa `user1` thì thành tombstone Ver 2. Gossip lan đi, và cả 5 node đều có `TOMBSTONE (Ver 2)`.
 4. **So sánh:** xóa *thật* `user2` trên S1–S3 (không dùng tombstone). Khi gossip, S4 và S5 tưởng S1–S3 "chưa nhận" `user2` nên gửi lại, và `'Carol'` **sống lại** trên cả 5 node. Đây chính là lý do phải có Death Certificate.
+5. **Hai client ghi cùng lúc:** client 1 ghi `'Dave'` vào S1–S3, client 2 ghi `'Erin'` vào S3–S5, cả hai đều tính ra Ver 1. Sau gossip, cả 5 replica đều là `'Erin'`.
+
+**Đã sửa sau review:**
+- **Lỗi cũ:** client đọc version rồi mới ghi, giữa hai bước không có khóa, nên hai client ghi cùng lúc có thể ra **cùng version với hai giá trị khác nhau**. `merge` chỉ đổi khi version lớn hơn hẳn, nên hai giá trị đó tồn tại mãi và gossip không làm chúng hội tụ.
+- **Cách sửa:** mỗi bản ghi mang thêm `writer` (ID của client). Bản mới hơn là bản có `(version, writer)` lớn hơn (hàm `rank`). Luật này dùng ở cả ba chỗ: gossip `merge`, đọc theo quorum, và xử lý `WRITE` ở replica.
+- **Sửa kèm:** replica trước đây nhận `WRITE` là ghi đè luôn. Giờ nó chỉ nhận nếu bản mới có `rank` lớn hơn, nên bản thua tới sau không đè được bản thắng.
+- Việc ghi được tách thành `prepare` (đọc version) và `commit` (gửi bản ghi) để demo dựng lại được đúng tình huống hai client xen kẽ nhau.
+
+```
+[CLIENT 1] chuẩn bị ghi 'Dave' Ver 1 -> S1,S2,S3 | [CLIENT 2] chuẩn bị ghi 'Erin' Ver 1 -> S3,S4,S5
+[SYSTEM] Trước gossip (cùng Ver, khác giá trị):
+    S1: user3='Dave' (Ver 1)   S2: 'Dave'   S3: 'Erin'   S4: 'Erin'   S5: 'Erin'
+[SYSTEM] Sau gossip (hội tụ sau 0.5s): client ID 2 > 1 nên 'Erin' thắng trên mọi replica
+[CLIENT] Read key='user3' (NR=3) versions [S1:1, S2:1, S3:1] -> 'Erin'
+```
+(Đoạn trên đã gộp 5 dòng trạng thái thành 1 dòng cho gọn.)
 
 **Review (điểm cần biết):**
-- **Hai client ghi cùng lúc có thể ra cùng một version với hai giá trị khác nhau.** Client đọc version rồi mới ghi, giữa hai bước không có khóa. Khi đó `merge` chỉ đổi khi version **lớn hơn hẳn**, nên hai giá trị cùng version sẽ tồn tại mãi, gossip không làm chúng hội tụ. Cách sửa thường dùng: thêm ID của client vào version để phân thắng thua. Demo chỉ có 1 client nên không gặp.
+- Phân thắng thua bằng ID client là last-writer-wins: bản `'Dave'` bị bỏ mà client 1 không được báo. Cả hai client đều nhận ACK.
 - Ghi không có rollback: nếu một replica trong quorum ghi chết giữa chừng, `rpc` ném lỗi và các replica đã ghi vẫn giữ bản mới. Demo không tắt replica nào.
 - Tombstone không bao giờ được dọn, nên bộ nhớ lớn dần theo số lần xóa. Hệ thật (ví dụ Cassandra) dọn sau một khoảng thời gian đủ dài để mọi node đã nhận.
 - Thời gian hội tụ thay đổi theo mỗi lần chạy, vì peer được chọn ngẫu nhiên và các thread chạy không cố định.
@@ -206,12 +238,23 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 2. `Write('Balance', 500)` và `Read('Balance')` cho `HMAC Verified OK`, trả về 500.
 3. **Replay:** kẻ tấn công gửi lại y nguyên gói `Write('Balance', 600)`, và server báo `REPLAY DETECTED!`
 4. **Sửa gói:** kẻ tấn công lật 1 bit trong gói `Write('Balance', 999)`, và server báo `HMAC Verification FAILED`. Đọc lại, Balance vẫn là 600.
+5. **Replay response:** Balance đã đổi thành 50. Kẻ tấn công chặn response thật của `Read('Balance')` và phát lại response cũ (Balance = 600). Client báo `RESPONSE REPLAY DETECTED!` và bỏ qua; đọc lại ra 50.
+
+**Đã sửa sau review:**
+- **Lỗi cũ:** chống replay mới làm một chiều. Bob kiểm tra nonce của request, nhưng Alice không kiểm tra nonce trong response (hàm `send` chỉ lấy `result`). Một response cũ vẫn có HMAC đúng, nên kẻ tấn công có thể phát lại nó cho một request mới và Alice sẽ tin.
+- **Cách sửa:** Alice nhớ nonce của từng gói đã gửi và so với nonce trong response. Không khớp thì bỏ qua.
+- **Sửa kèm:** mỗi gói ghi thêm chiều đi (`dir` = `req` hoặc `resp`) bên trong phần được mã hóa. Hai chiều dùng chung khóa K_AB, nên nếu không có trường này, kẻ tấn công có thể gửi ngược một request về cho Alice làm response (reflection).
+- Alice cũng kiểm tra HMAC của response trong `try`, thay vì để chương trình dừng khi response bị sửa.
+
+```
+[ATTACKER] Chặn response thật, phát lại response cũ (Balance = 600) cho client...
+[CLIENT] RESPONSE REPLAY DETECTED! Response mang nonce 332412424, request vừa gửi là 174335966 -> bỏ qua.
+[CLIENT] Response nonce khớp | RPC result = 50
+```
 
 **Review (điểm cần biết):**
 - Needham-Schroeder gốc có lỗ hổng: nếu K_AB cũ bị lộ, kẻ tấn công có thể phát lại Ticket cũ (slide 28). Cách sửa của Denning-Sacco là thêm timestamp vào Ticket. Bản lab này chưa làm phần đó, và Ticket cũng chưa có thời hạn.
-- **Chống replay mới làm một chiều.** Bob kiểm tra nonce của request, nhưng Alice **không** kiểm tra nonce trong response có khớp với request mình vừa gửi không (hàm `send` chỉ lấy `result`). Kẻ tấn công có thể phát lại một response cũ hợp lệ cho một request mới. Cách sửa: so `nonce` trong response với nonce đã gửi.
 - Tập nonce đã dùng (`seen`) lớn dần mãi trong suốt phiên. Hệ thật thường kèm timestamp để chỉ cần nhớ nonce trong một khoảng thời gian.
-- Request và response dùng chung một khóa K_AB cho cả hai chiều. Dùng khóa riêng cho mỗi chiều sẽ chặn được việc phản chiếu gói tin (reflection).
 - Khóa dài hạn K_A, K_B được sinh sẵn khi chương trình khởi động (coi như đã đăng ký với KDC từ trước).
 
 **Bài tập số (slide 37–38):**
@@ -229,9 +272,9 @@ Dữ liệu lưu dạng `key -> {value, version, tombstone}`.
 | 4 | ✔ | khóa cho `in_election`; trace phụ thuộc thời gian |
 | 5 | ✔ | kịch bản coordinator crash (blocking) |
 | 6 | ✔ (tự chọn đề) | demo xung đột version khi NW ≤ N/2 |
-| 7 | ✔ | giải quyết xung đột khi 2 server ghi cùng key; write đến sai thứ tự |
-| 8 | ✔ | phân thắng thua khi 2 lần ghi trùng version; dọn tombstone |
-| 9 | ✔ | kiểm tra nonce của response; timestamp trong Ticket (Denning-Sacco) |
+| 7 | ✔ | Monotonic Writes, Writes-Follow-Reads (đề không yêu cầu). *Đã sửa:* xung đột khi 2 server ghi cùng key; write đến sai thứ tự |
+| 8 | ✔ | dọn tombstone; rollback khi ghi dở. *Đã sửa:* 2 lần ghi trùng version không hội tụ |
+| 9 | ✔ | timestamp trong Ticket (Denning-Sacco). *Đã sửa:* replay response; phản chiếu gói tin |
 
 ---
 

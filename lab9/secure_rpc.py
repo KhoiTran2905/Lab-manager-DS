@@ -12,6 +12,8 @@ Lab 9 - Secure RPC & KDC Authentication Proxy Simulator.
   2. RPC mã hóa bằng AES-CBC với khóa phiên K_AB.
   3. Mỗi message có HMAC-SHA256 để phát hiện bị sửa.
   4. Mỗi RPC có nonce; server nhớ nonce đã dùng -> gói tin bị gửi lại (replay) bị từ chối.
+     Response mang lại đúng nonce của request; client kiểm tra -> response cũ bị phát lại cũng bị từ chối.
+     Mỗi gói còn ghi chiều đi ("req" / "resp") -> không phản chiếu được request thành response.
 
 Mỗi "khóa" là 32 byte; từ đó tách ra khóa AES và khóa HMAC riêng.
 Cần: pip install cryptography
@@ -152,13 +154,16 @@ class Bob:
             except ValueError:
                 say("[SERVER] HMAC Verification FAILED -> Packet bị sửa, từ chối!")
                 return {"error": "integrity"}
+            if req.get("dir") != "req":
+                say("[SERVER] Gói không phải request (bị phản chiếu?) -> từ chối.")
+                return {"error": "direction"}
             if req["nonce"] in s["seen"]:
                 say(f"[SERVER] REPLAY DETECTED! Nonce {req['nonce']} đã dùng -> từ chối RPC.")
                 return {"error": "replay"}
             s["seen"].add(req["nonce"])
             say(f"[SERVER] HMAC Verified OK | Nonce {req['nonce']} mới | Decrypted RPC Execution Successful.")
             result = self.execute(req["op"], req["args"])
-            return {"body": seal(s["k_ab"], {"nonce": req["nonce"], "result": result})}
+            return {"body": seal(s["k_ab"], {"dir": "resp", "nonce": req["nonce"], "result": result})}
         return {"error": "unknown"}
 
     def execute(self, op, args):
@@ -178,6 +183,8 @@ class Alice:
         self.k_ab = None
         self.bob = None
         self.last_packet = None     # "kẻ tấn công" bắt được gói này để replay
+        self.last_response = None   # ... và cả response gần nhất của server
+        self.nonce_of = {}          # body của gói đã gửi -> nonce của nó (để đối chiếu với response)
 
     def login(self):
         r_a1 = nonce()
@@ -200,18 +207,35 @@ class Alice:
 
     def make_packet(self, op, *args):
         n = nonce()
-        packet = {"type": "RPC", "client": "Alice", "body": seal(self.k_ab, {"nonce": n, "op": op, "args": args})}
+        packet = {"type": "RPC", "client": "Alice",
+                  "body": seal(self.k_ab, {"dir": "req", "nonce": n, "op": op, "args": args})}
         say(f"[CLIENT] Executing Secure RPC: {op}{args} | Encrypted Payload + HMAC Sent (nonce {n}).")
         self.last_packet = packet       # kẻ nghe lén trên mạng cũng thấy được gói này
+        self.nonce_of[packet["body"]] = n
         return packet
 
-    def send(self, packet):
+    def send(self, packet, forged_response=None):
+        """forged_response: kẻ tấn công chặn response thật và đưa cho client 1 gói khác."""
         resp = self.bob.call(packet)
         if "body" in resp:
-            res = unseal(self.k_ab, resp["body"])["result"]
-            say(f"[CLIENT] RPC result = {res!r}")
-            return res
-        say(f"[CLIENT] RPC bị từ chối: {resp['error']}")
+            self.last_response = resp
+        if forged_response is not None:
+            resp = forged_response
+        if "body" not in resp:
+            say(f"[CLIENT] RPC bị từ chối: {resp['error']}")
+            return None
+        try:
+            reply = unseal(self.k_ab, resp["body"])
+        except ValueError:
+            say("[CLIENT] HMAC Verification FAILED -> Response bị sửa, bỏ qua!")
+            return None
+        want = self.nonce_of.get(packet["body"])
+        if reply.get("dir") != "resp" or reply.get("nonce") != want:
+            say(f"[CLIENT] RESPONSE REPLAY DETECTED! Response mang nonce {reply.get('nonce')}, "
+                f"request vừa gửi là {want} -> bỏ qua.")
+            return None
+        say(f"[CLIENT] Response nonce khớp | RPC result = {reply['result']!r}")
+        return reply["result"]
 
     def rpc(self, op, *args):
         return self.send(self.make_packet(op, *args))
@@ -246,6 +270,14 @@ def main():
     packet = alice.make_packet("Write", "Balance", 999)
     say("[ATTACKER] Chặn gói tin, lật 1 bit trong ciphertext rồi mới chuyển tiếp...")
     alice.send(tamper(packet))
+    alice.rpc("Read", "Balance")
+
+    print("\n===== 5. Tấn công REPLAY RESPONSE: trả cho client một response cũ =====")
+    old = alice.last_response                       # response hợp lệ của Read ở trên (Balance = 600)
+    alice.rpc("Write", "Balance", 50)
+    packet = alice.make_packet("Read", "Balance")
+    say("[ATTACKER] Chặn response thật, phát lại response cũ (Balance = 600) cho client...")
+    alice.send(packet, forged_response=old)
     alice.rpc("Read", "Balance")
 
 
